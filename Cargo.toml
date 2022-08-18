@@ -1,0 +1,22 @@
+[package]
+name = "rnd"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sujal Bolia <sujalbolia@gmail.com>"]
+license = "MIT/Apache-2.0"
+description = "rnd lets you select random data in different ways"
+homepage = "https://github.com/nextonesfaster/rnd"
+repository = "https://github.com/nextonesfaster/rnd"
+keywords = ["random", "choose", "coin", "shuffle"]
+categories = ["command-line-utilities"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+itertools = "0.10.3"
+termcolor = "1.1.3"
+
+[dependencies.clap]
+version = "3.2.15"
+features = ["derive", "cargo", "wrap_help"]

@@ -13,7 +13,7 @@ Sujal Bolia <sujalbolia@gmail.com>
 rnd lets you select random data in different ways
 
 USAGE:
-    rnd <SUBCOMMAND>
+    rnd [SUBCOMMAND]
 
 OPTIONS:
     -h, --help       Print help information

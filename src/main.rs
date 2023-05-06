@@ -33,7 +33,7 @@ const HELP_TEMPLATE: &str = r"{before-help}{bin} {version}
 struct Cli {
     /// The subcommand.
     #[clap(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -99,7 +99,7 @@ enum Command {
         #[clap(short, long)]
         inclusive: bool,
         /// The precision of a floating point number.
-        #[clap(short, long, default_value_t = 2)]
+        #[clap(short, long, default_value_t = 6)]
         precision: usize,
         /// The lower bound of the range.
         start: Option<Num>,
@@ -169,38 +169,7 @@ fn choose_with_repetition(
     let dist = WeightedIndex::new(weights)?;
     let mut rng = rand::thread_rng();
 
-    if count {
-        let mut map = HashMap::new();
-        for i in 0..amount {
-            let selection = &items[dist.sample(&mut rng)];
-            let entry = map.entry(selection).or_insert(0);
-            *entry += 1;
-            if all {
-                print!("{}", selection);
-                if i != amount - 1 {
-                    print!(", ");
-                }
-            }
-        }
-        if all {
-            println!("\n");
-        }
-        println!(
-            "{}",
-            map.into_iter()
-                .sorted_by(|(_, a), (_, b)| b.cmp(a))
-                .map(|(s, c)| format!("{s}: {c}"))
-                .join("\n")
-        );
-    } else {
-        for i in 0..amount {
-            print!("{}", items[dist.sample(&mut rng)]);
-            if i != amount - 1 {
-                print!(", ");
-            }
-        }
-        println!();
-    }
+    print_selections(count, (0..amount).map(|_| &items[dist.sample(&mut rng)]), all, amount);
 
     Ok(())
 }
@@ -214,15 +183,24 @@ fn choose_without_repetition(
 ) -> Result<()> {
     let choices = items.into_iter().zip(weights.into_iter()).collect::<Vec<_>>();
 
-    let mut rng = rand::thread_rng();
+    print_selections(
+        count,
+        choices.choose_multiple_weighted(&mut rand::thread_rng(), amount, |i| i.1)?.map(|(i, _)| i),
+        all,
+        amount,
+    );
 
-    let mut selections =
-        choices.choose_multiple_weighted(&mut rng, amount, |i| i.1)?.map(|(i, _)| i);
+    Ok(())
+}
 
+fn print_selections<'a, I>(count: bool, mut selections: I, all: bool, amount: usize)
+where
+    I: Iterator<Item = &'a String>,
+{
     if count {
         let mut map = HashMap::new();
         for (i, selection) in selections.enumerate() {
-            let entry = map.entry(selection).or_insert(0);
+            let entry = map.entry(selection).or_insert(0u64);
             *entry += 1;
             if all {
                 print!("{}", selection);
@@ -244,26 +222,34 @@ fn choose_without_repetition(
     } else {
         println!("{}", selections.join(", "));
     }
-
-    Ok(())
 }
 
 fn run_cli() -> Result<()> {
     let app = Cli::parse();
 
-    match app.command {
+    match app.command.unwrap_or(Command::Random {
+        inclusive: false,
+        precision: 2,
+        start: Some(Num::Float(0.0)),
+        end: Some(Num::Float(1.0)),
+    }) {
         Command::Coin {
             amount: times,
             count,
             all,
             ..
-        } => choose_with_repetition(
-            vec![String::from("heads"), String::from("tails")],
-            vec![1.0, 1.0],
-            times,
-            count,
-            all || !count,
-        )?,
+        } => {
+            let all = all || times < AMOUNT_THRESHOLD;
+            let count = count || !all;
+
+            choose_with_repetition(
+                vec![String::from("heads"), String::from("tails")],
+                vec![1.0, 1.0],
+                times,
+                count,
+                all,
+            )?
+        },
         Command::Choose {
             amount,
             weights,
@@ -285,18 +271,26 @@ fn run_cli() -> Result<()> {
             }
         },
         Command::Shuffle {
-            items,
+            items, ..
         } => shuffle_cmd(items),
         Command::Random {
-            start,
-            end,
+            mut start,
+            mut end,
             inclusive,
             precision,
-        } => match (start.unwrap_or(Num::Float(0.0)), end.unwrap_or(Num::Float(1.0))) {
-            (Num::Int(s), Num::Int(e)) => random_cmd(s, e, inclusive, precision),
-            (Num::Float(s), Num::Float(e)) => random_cmd(s, e, inclusive, precision),
-            (Num::Int(s), Num::Float(e)) => random_cmd(s as f64, e, inclusive, precision),
-            (Num::Float(s), Num::Int(e)) => random_cmd(s, e as f64, inclusive, precision),
+            ..
+        } => {
+            if start.is_some() && end.is_none() {
+                end = start;
+                start = Some(Num::Int(0));
+            }
+
+            match (start.unwrap_or(Num::Float(0.0)), end.unwrap_or(Num::Float(1.0))) {
+                (Num::Int(s), Num::Int(e)) => random_cmd(s, e, inclusive, precision),
+                (Num::Int(s), Num::Float(e)) => random_cmd(s as f64, e, inclusive, precision),
+                (Num::Float(s), Num::Int(e)) => random_cmd(s, e as f64, inclusive, precision),
+                (Num::Float(s), Num::Float(e)) => random_cmd(s, e, inclusive, precision),
+            }
         }?,
     }
 

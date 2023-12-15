@@ -2,6 +2,7 @@ mod error;
 
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
@@ -49,7 +50,7 @@ enum Command {
         count: bool,
         /// Show the result of every flip in order.
         ///
-        /// This is enabled by default, but using the `count` flag disables
+        /// This is enabled by default up to a threshold, but using the `count` flag disables
         /// it. Explicitly passing this flag enables it even with the `count` flag.
         #[clap(short = 'A', long)]
         all: bool,
@@ -64,7 +65,7 @@ enum Command {
         /// The number of items to choose.
         #[clap(short, long, default_value_t = 1, short_alias = 'n')]
         amount: usize,
-        /// The weights of the items.
+        /// The list of comma-separated weights of the items.
         ///
         /// The number of weights must be equal to the number of items.
         #[clap(short, long, use_value_delimiter = true)]
@@ -159,8 +160,8 @@ fn shuffle_cmd(mut items: Vec<String>) {
     println!("{}", items.iter().join(", "));
 }
 
-fn choose_with_repetition(
-    items: Vec<String>,
+fn choose_with_repetition<S: Display + Eq + Hash>(
+    items: Vec<S>,
     weights: Vec<f64>,
     amount: usize,
     count: bool,
@@ -193,9 +194,10 @@ fn choose_without_repetition(
     Ok(())
 }
 
-fn print_selections<'a, I>(count: bool, mut selections: I, all: bool, amount: usize)
+fn print_selections<'a, I, D>(count: bool, mut selections: I, all: bool, amount: usize)
 where
-    I: Iterator<Item = &'a String>,
+    I: Iterator<Item = &'a D>,
+    D: 'a + Display + Eq + Hash,
 {
     if count {
         let mut map = HashMap::new();
@@ -234,32 +236,28 @@ fn run_cli() -> Result<()> {
         end: Some(Num::Float(1.0)),
     }) {
         Command::Coin {
-            amount: times,
+            amount,
             count,
             all,
             ..
         } => {
-            let all = all || times < AMOUNT_THRESHOLD;
+            let all = all || amount < AMOUNT_THRESHOLD;
             let count = count || !all;
 
-            choose_with_repetition(
-                vec![String::from("heads"), String::from("tails")],
-                vec![1.0, 1.0],
-                times,
-                count,
-                all,
-            )?
+            choose_with_repetition(vec!["heads", "tails"], vec![1.0, 1.0], amount, count, all)?
         },
         Command::Choose {
             amount,
-            weights,
+            mut weights,
             items,
             count,
             all,
             repetition,
             ..
         } => {
-            let weights = if weights.is_empty() { [1.0].repeat(items.len()) } else { weights };
+            if weights.is_empty() {
+                weights = [1.0].repeat(items.len())
+            }
 
             let all = all || amount < AMOUNT_THRESHOLD;
             let count = count || !all;
@@ -290,8 +288,8 @@ fn run_cli() -> Result<()> {
                 (Num::Int(s), Num::Float(e)) => random_cmd(s as f64, e, inclusive, precision),
                 (Num::Float(s), Num::Int(e)) => random_cmd(s, e as f64, inclusive, precision),
                 (Num::Float(s), Num::Float(e)) => random_cmd(s, e, inclusive, precision),
-            }
-        }?,
+            }?
+        },
     }
 
     Ok(())
